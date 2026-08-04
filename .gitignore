@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+
+# PyInstaller 打包产物
+_build_tmp/
+build/
+dist/
+星痕强度控制器/
+
+# 运行时生成
+debug_screenshots/
+users.json
+logs/
+*.log
+
+# 调试/测试脚本
+debug_health*.py
+explore_ui*.py
+test_*.py
+quick_test.py
+_sniff_probe.py
+_trim*.py
+_stage*.py
+
+# C# 子项目（非主程序依赖）
+ClrMDSample/
+RealtimeCapture/
+proto_dump/
+ref_data/
+
+# 内部记忆
+project_memory/
+
+# 旧版编译产物
+StarResonanceDamageCounter/
+
+# Node.js
+node_modules/
+pnpm-store/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 临时文件
+*.tmp
+*.bak

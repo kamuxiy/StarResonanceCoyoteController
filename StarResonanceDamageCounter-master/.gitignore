@@ -1,0 +1,10 @@
+node_modules/
+node_modules_pnpm/
+node_modules_npm/
+bak/
+users.json
+settings.json
+SyncContainerData.dat
+SyncContainerData.json
+dist/
+logs/
