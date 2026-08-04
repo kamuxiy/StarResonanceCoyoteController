@@ -3,10 +3,10 @@ import os
 import traceback
 from datetime import datetime
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox, QFormLayout, QSizePolicy, QGridLayout, QFileDialog, QLineEdit
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox, QFormLayout, QSizePolicy, QGridLayout, QFileDialog, QLineEdit, QTextBrowser
 from PyQt5.QtGui import QIntValidator
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QColor, QPixmap, QPainter, QPen, QBrush
+from PyQt5.QtGui import QFont, QColor, QPixmap, QPainter, QPen, QBrush, QPalette, QTextCharFormat, QTextCursor
 from PyQt5.QtCore import QByteArray, QIODevice
 from PyQt5.QtGui import QImage
 
@@ -1506,6 +1506,185 @@ class DGLabDebugInterface(QWidget):
         pass
 
 
+class AboutInterface(ScrollArea):
+    """关于页面：显示 README 内容（Markdown 渲染）"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("AboutInterface")
+        self.setWidgetResizable(True)
+        self.view = QWidget(self)
+        self.setWidget(self.view)
+        self._init_ui()
+        self._load_readme()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self.view)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(18)
+
+        # 标题区
+        title_row = QHBoxLayout()
+        title_label = SubtitleLabel("关于本项目")
+        title_label.setFont(QFont("Microsoft YaHei UI", 18, QFont.Bold))
+        title_row.addWidget(title_label)
+        title_row.addStretch()
+        # 外部链接按钮
+        repo_btn = PushButton("打开 GitHub 仓库")
+        repo_btn.setIcon(FIF.GITHUB)
+        repo_btn.clicked.connect(self._open_github)
+        title_row.addWidget(repo_btn)
+        layout.addLayout(title_row)
+
+        version_row = QHBoxLayout()
+        ver_label = CaptionLabel("星痕强度控制器  v1.0.0  |  AGPL-3.0 License  |  Made by kamuXiY")
+        ver_label.setTextColor(QColor(130, 130, 130), QColor(170, 170, 170))
+        version_row.addWidget(ver_label)
+        version_row.addStretch()
+        layout.addLayout(version_row)
+
+        # 分隔
+        sep = QLabel()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: rgba(128,128,128,0.25);")
+        layout.addWidget(sep)
+
+        # README 内容显示（Markdown 渲染）
+        self.readme_text = QTextBrowser()
+        self.readme_text.setReadOnly(True)
+        self.readme_text.setOpenExternalLinks(True)
+        self._apply_theme_style()
+        layout.addWidget(self.readme_text, 1)
+
+    def _apply_theme_style(self):
+        """根据当前主题应用适配的颜色样式"""
+        dark = isDarkTheme()
+        if dark:
+            bg = "rgba(255,255,255,0.03)"
+            text_color = "#e0e0e0"
+            heading_color = "#ffffff"
+            link_color = "#4fc3f7"
+            code_bg = "rgba(255,255,255,0.08)"
+            border_color = "rgba(255,255,255,0.15)"
+            quote_color = "#b0b0b0"
+        else:
+            bg = "rgba(0,0,0,0.02)"
+            text_color = "#1a1a1a"
+            heading_color = "#000000"
+            link_color = "#0a6ebd"
+            code_bg = "rgba(0,0,0,0.06)"
+            border_color = "rgba(0,0,0,0.12)"
+            quote_color = "#555555"
+
+        self._text_color = text_color
+        self._heading_color = heading_color
+        self._link_color = link_color
+        self._code_bg = code_bg
+        self._border_color = border_color
+        self._quote_color = quote_color
+
+        self.readme_text.setStyleSheet(f"""
+            QTextBrowser {{
+                background: {bg};
+                border: none;
+                padding: 8px;
+                font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+                font-size: 14px;
+            }}
+            QTextBrowser::viewport {{
+                background: transparent;
+            }}
+            QTextBrowser QScrollBar:vertical {{ width: 8px; }}
+        """)
+
+    def _build_styled_html(self, raw_html):
+        """将 setMarkdown 生成的 HTML 包装成带主题样式的完整 HTML"""
+        css = f"""
+body {{
+    color: {self._text_color};
+    font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+}}
+h1 {{ color: {self._heading_color}; font-size: 24px; }}
+h2 {{ color: {self._heading_color}; font-size: 20px; }}
+h3 {{ color: {self._heading_color}; font-size: 17px; }}
+h4, h5, h6 {{ color: {self._heading_color}; }}
+a {{ color: {self._link_color}; text-decoration: none; }}
+a:hover {{ text-decoration: underline; }}
+code {{
+    background-color: {self._code_bg};
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: Consolas, "Courier New", monospace;
+}}
+pre {{
+    background-color: {self._code_bg};
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+}}
+pre code {{
+    background: transparent;
+    padding: 0;
+}}
+table {{
+    border-collapse: collapse;
+    margin: 10px 0;
+}}
+th, td {{
+    border: 1px solid {self._border_color};
+    padding: 6px 12px;
+    color: {self._text_color};
+}}
+th {{
+    background-color: {self._code_bg};
+    color: {self._heading_color};
+    font-weight: 600;
+}}
+blockquote {{
+    border-left: 3px solid {self._border_color};
+    padding-left: 14px;
+    margin: 8px 0;
+    color: {self._quote_color};
+}}
+ul, ol {{ padding-left: 24px; }}
+li {{ margin: 2px 0; }}
+hr {{ border: none; border-top: 1px solid {self._border_color}; margin: 16px 0; }}
+img {{ max-width: 100%; }}
+        """
+        # 将 Qt 生成的 <html>...</html> 中的 <style> 替换
+        import re
+        # 移除 Qt 原有的 <style> 块
+        cleaned = re.sub(r'<style[^>]*>.*?</style>', '', raw_html, flags=re.DOTALL)
+        # 在 <head> 中注入新样式
+        styled = cleaned.replace('<head>', f'<head><style>{css}</style>', 1)
+        if '<head>' not in cleaned:
+            styled = f'<html><head><style>{css}</style></head><body>{cleaned}</body></html>'
+        return styled
+
+    def _load_readme(self):
+        """加载 README.md 内容并以 Markdown 渲染"""
+        readme_path = app_paths.find_resource("README.md", must_exist=False)
+        if not readme_path or not os.path.exists(readme_path):
+            self.readme_text.setPlainText("README.md 文件未找到。")
+            return
+        try:
+            with open(readme_path, "r", encoding="utf-8") as f:
+                md = f.read()
+            self._apply_theme_style()
+            # 用 setMarkdown 解析，再用 toHtml 拿到 HTML，注入主题样式后 setHtml
+            self.readme_text.setMarkdown(md)
+            raw_html = self.readme_text.toHtml()
+            styled_html = self._build_styled_html(raw_html)
+            self.readme_text.setHtml(styled_html)
+            self.readme_text.verticalScrollBar().setValue(0)
+        except Exception as e:
+            self.readme_text.setPlainText(f"加载 README 失败: {e}")
+
+    def _open_github(self):
+        import webbrowser
+        webbrowser.open("https://github.com/kamuxiy/StarResonanceCoyoteController")
 
 
 class ConfigWindow(FluentWindow):
@@ -1781,6 +1960,7 @@ class ConfigWindow(FluentWindow):
         self.control_interface = ControlInterface()
         self.health_interface = HealthInterface()
         self.dglab_interface = DGLabDebugInterface()
+        self.about_interface = AboutInterface()
 
         self.addSubInterface(
             self.control_interface, FIF.HOME, "控制面板",
@@ -1793,6 +1973,10 @@ class ConfigWindow(FluentWindow):
         self.addSubInterface(
             self.dglab_interface, FIF.PALETTE, "郊狼控制",
             position=NavigationItemPosition.TOP
+        )
+        self.addSubInterface(
+            self.about_interface, FIF.INFO, "关于",
+            position=NavigationItemPosition.BOTTOM
         )
 
     def connect_signals(self):
