@@ -1,0 +1,3 @@
+# StarResonanceCoyoteController
+
+星痕共鸣游戏事件驱动的郊狼设备强度控制器
