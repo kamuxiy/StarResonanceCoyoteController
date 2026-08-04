@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>血条监控 - 星痕共鸣</title>
+        <script src="./socket.io.min.js"></script>
+        <script src="i18n.js"></script>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                color: #ffffff;
+                overflow: hidden;
+                user-select: none;
+            }
+
+            .container {
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 6px 8px;
+                background: rgba(0, 0, 0, 0.2);
+                backdrop-filter: blur(10px);
+            }
+
+            .header-left {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                flex: 1;
+            }
+
+            .header-center {
+                display: flex;
+                gap: 6px;
+                flex: 2;
+                justify-content: center;
+            }
+
+            .header-right {
+                display: flex;
+                align-items: center;
+                flex: 1;
+                justify-content: flex-end;
+            }
+
+            .title {
+                font-size: 16px;
+                font-weight: 600;
+                margin-bottom: 1px;
+                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            }
+
+            .subtitle {
+                font-size: 11px;
+                opacity: 0.8;
+            }
+
+            .controls {
+                display: flex;
+                gap: 6px;
+            }
+
+            .btn {
+                padding: 4px 8px;
+                font-size: 11px;
+                border: none;
+                border-radius: 4px;
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                backdrop-filter: blur(10px);
+            }
+
+            .btn:hover {
+                background: rgba(255, 255, 255, 0.3);
+                transform: translateY(-1px);
+            }
+
+            .btn.active {
+                background: #4caf50;
+                box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            }
+
+            .hp-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                grid-auto-rows: 45px;
+                flex: 1;
+                overflow-y: auto;
+                align-content: start;
+            }
+
+            /* 自定义滚动条 */
+            .hp-grid::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            .hp-grid::-webkit-scrollbar-track {
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 3px;
+            }
+
+            .hp-grid::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.3);
+                border-radius: 3px;
+            }
+
+            .hp-grid::-webkit-scrollbar-thumb:hover {
+                background: rgba(255, 255, 255, 0.5);
+            }
+
+            .player-card {
+                background: rgba(0, 0, 0, 0.25);
+                border-radius: 8px;
+                padding: 6px;
+                backdrop-filter: blur(15px);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                transition: all 0.3s ease;
+                position: relative;
+                overflow: hidden;
+                height: 45px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+            }
+
+            .player-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+
+            .player-card::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background: var(--profession-color, #4caf50);
+                opacity: 0.8;
+            }
+
+            .player-info {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                margin-bottom: 4px;
+                flex-wrap: wrap;
+                gap: 4px;
+            }
+
+            .player-basic {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex: 1;
+                min-width: 0;
+            }
+
+            .player-name {
+                font-size: 12px;
+                font-weight: 600;
+                color: #ffffff;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                min-width: 0;
+            }
+
+            .player-profession {
+                font-size: 9px;
+                padding: 1px 4px;
+                border-radius: 8px;
+                background: var(--profession-color, #4caf50);
+                color: white;
+                font-weight: 500;
+                white-space: nowrap;
+            }
+
+            .player-stats {
+                display: flex;
+                gap: 8px;
+                font-size: 9px;
+                opacity: 0.9;
+                align-items: center;
+            }
+
+            .hp-container {
+                margin-bottom: 0;
+                position: relative;
+            }
+
+            .hp-text {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 10px;
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: 50%;
+                transform: translateY(-50%);
+                z-index: 2;
+                pointer-events: none;
+            }
+
+            .hp-current {
+                font-weight: 600;
+                color: #ffffff;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+                margin-left: 4px;
+            }
+
+            .hp-max {
+                color: #ffffff;
+                opacity: 0.9;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+                margin-right: 4px;
+            }
+
+            .hp-percentage {
+                color: #ffffff;
+                font-weight: 600;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+            }
+
+            .hp-bar {
+                height: 14px;
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 3px;
+                overflow: hidden;
+                position: relative;
+            }
+
+            .hp-fill {
+                height: 100%;
+                background: linear-gradient(90deg, var(--hp-color, #4caf50) 0%, var(--hp-color-light, #66bb6a) 100%);
+                border-radius: 3px;
+                transition:
+                    width 0.5s ease,
+                    background-color 0.3s ease;
+                position: relative;
+            }
+
+            .hp-bar::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
+                animation: shine 6s infinite;
+            }
+
+            @keyframes shine {
+                0% {
+                    transform: translateX(-100%);
+                }
+                100% {
+                    transform: translateX(100%);
+                }
+            }
+
+            .stat-item {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                font-weight: 500;
+                color: rgba(255, 255, 255, 0.9);
+            }
+
+            .stat-icon {
+                font-size: 8px;
+                opacity: 0.8;
+            }
+
+            .stat-value {
+                font-size: 9px;
+                font-weight: 600;
+            }
+
+            /* 血量状态颜色 */
+            .hp-critical {
+                --hp-color: #f44336;
+                --hp-color-light: #ef5350;
+            }
+
+            .hp-warning {
+                --hp-color: #ff9800;
+                --hp-color-light: #ffb74d;
+            }
+
+            .hp-healthy {
+                --hp-color: #4caf50;
+                --hp-color-light: #66bb6a;
+            }
+
+            .hp-full {
+                --hp-color: #2196f3;
+                --hp-color-light: #42a5f5;
+            }
+
+            /* 职业颜色 */
+            .profession-damage {
+                --profession-color: #f44336;
+            }
+            .profession-tank {
+                --profession-color: #2196f3;
+            }
+            .profession-heal {
+                --profession-color: #4caf50;
+            }
+            .profession-support {
+                --profession-color: #ff9800;
+            }
+            .profession-unknown {
+                --profession-color: #9e9e9e;
+            }
+
+            .no-data {
+                grid-column: 1 / -1;
+                text-align: center;
+                padding: 40px;
+                opacity: 0.6;
+                font-size: 14px;
+            }
+
+            .connection-status {
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 600;
+                backdrop-filter: blur(10px);
+                transition: all 0.3s ease;
+                white-space: nowrap;
+            }
+
+            .status-connected {
+                background: rgba(76, 175, 80, 0.8);
+                color: white;
+            }
+
+            .status-disconnected {
+                background: rgba(244, 67, 54, 0.8);
+                color: white;
+            }
+
+            .status-connecting {
+                background: rgba(255, 152, 0, 0.8);
+                color: white;
+            }
+
+            /* 响应式布局 - 小屏幕优化 */
+            @media (max-width: 600px) {
+                .header {
+                    flex-direction: column;
+                    text-align: center;
+                }
+
+                .header-left,
+                .header-center,
+                .header-right {
+                    flex: none;
+                    width: 100%;
+                    justify-content: center;
+                }
+
+                .header-left {
+                    align-items: center;
+                }
+
+                .player-card {
+                    padding: 6px;
+                }
+
+                .player-stats {
+                    gap: 6px;
+                }
+
+                .player-name {
+                    font-size: 11px;
+                }
+            }
+
+            /* 窄屏模式：只显示控制按钮 */
+            @media (max-width: 700px) {
+                .header {
+                    flex-direction: row;
+                    justify-content: center;
+                    gap: 0;
+                    padding: 4px 6px;
+                }
+
+                .header-left,
+                .header-right {
+                    display: none;
+                }
+
+                .header-center {
+                    flex: 1;
+                    width: auto;
+                }
+
+                .controls {
+                    gap: 3px;
+                }
+
+                .btn {
+                    font-size: 9px;
+                    padding: 3px 5px;
+                }
+            }
+
+            /* 极窄屏模式：隐藏DPS等数据 */
+            @media (max-width: 400px) {
+                /* 隐藏玩家统计数据 */
+                .player-stats {
+                    display: none;
+                }
+            }
+
+            /* 极窄屏模式：隐藏头部 */
+            @media (max-width: 300px) {
+                .header {
+                    display: none;
+                }
+            }
+
+            /* 动态进入动画 */
+            .player-card {
+                animation: slideInUp 0.6s ease-out;
+                transition:
+                    all 0.3s ease,
+                    opacity 0.2s ease;
+            }
+
+            .player-card:nth-child(even) {
+                animation-delay: 0.1s;
+            }
+
+            /* 隐藏状态的平滑过渡 */
+            .player-card[style*='display: none'] {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            @keyframes slideInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            /* 低血量闪烁效果 */
+            .hp-critical .player-card {
+                animation: pulse 2s infinite;
+            }
+
+            @keyframes pulse {
+                0%,
+                100% {
+                    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+                }
+                50% {
+                    box-shadow: 0 8px 20px rgba(244, 67, 54, 0.4);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="header-left">
+                    <div class="title" data-i18n="hpMonitorTitle">🩸 血条监控</div>
+                    <div class="subtitle" id="playerCount" data-i18n="waitingForConnection">等待数据连接...</div>
+                </div>
+
+                <div class="header-center">
+                    <div class="controls">
+                        <button class="btn active" id="sortHpBtn" onclick="setSortMode('hp')" data-i18n="sortByHp">💚 按血量</button>
+                        <button class="btn" id="sortNameBtn" onclick="setSortMode('name')" data-i18n="sortByName">🏷️ 按姓名</button>
+                        <button class="btn" id="sortDpsBtn" onclick="setSortMode('dps')" data-i18n="sortByDpsHp">⚔️ 按DPS</button>
+                        <button class="btn" id="sortHpsBtn" onclick="setSortMode('hps')" data-i18n="sortByHpsHp">🩹 按HPS</button>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <div class="connection-status status-connecting" id="connectionStatus" data-i18n="connecting">🔄 连接中</div>
+                </div>
+            </div>
+
+            <div class="hp-grid" id="playerGrid">
+                <div class="no-data">
+                    <div data-i18n="connectingServer">🔄 正在连接服务器...</div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // 全局变量
+            let socket = null;
+            let isWebSocketConnected = false;
+            let apiInterval = null;
+            let isPaused = false;
+            let currentSortMode = 'hp';
+            let currentPlayers = [];
+            let playerCards = []; // 预生成的卡片数组
+            const MAX_CARDS = 20; // 最大卡片数量
+
+            // 职业映射
+            const professionMap = {
+                雷影剑士: { type: 'damage', color: '#e74c3c', short_name: '太刀' },
+                冰魔导师: { type: 'damage', color: '#e74c3c', short_name: '冰法' },
+                青岚骑士: { type: 'damage', color: '#e74c3c', short_name: '长枪' },
+                神射手: { type: 'damage', color: '#e74c3c', short_name: '弓箭' },
+                '涤罪恶火·战斧': { type: 'damage', color: '#e74c3c', short_name: '战斧' },
+                '雷霆一闪·手炮': { type: 'damage', color: '#e74c3c', short_name: '手炮' },
+                '暗灵祈舞·仪刀/仪仗': { type: 'damage', color: '#e74c3c', short_name: '仪刀' },
+                森语者: { type: 'heal', color: '#27ae60', short_name: '森语' },
+                灵魂乐手: { type: 'heal', color: '#27ae60', short_name: '吉他' },
+                巨刃守护者: { type: 'tank', color: '#2980b9', short_name: '巨刃' },
+                神盾骑士: { type: 'tank', color: '#2980b9', short_name: '剑盾' },
+            };
+
+            // 初始化连接
+            function initConnection() {
+                initWebSocket();
+                monitorConnection();
+            }
+
+            // WebSocket连接
+            function initWebSocket() {
+                try {
+                    socket = io();
+
+                    socket.on('connect', () => {
+                        console.log('WebSocket 连接成功');
+                        isWebSocketConnected = true;
+                        stopAPIFallback();
+                        updateConnectionStatus('connected');
+                    });
+
+                    socket.on('data', (data) => {
+                        if (!isPaused && data && data.user) {
+                            processData(data.user);
+                        }
+                    });
+
+                    socket.on('disconnect', () => {
+                        console.log('WebSocket 连接断开');
+                        isWebSocketConnected = false;
+                        updateConnectionStatus('disconnected');
+                    });
+
+                    socket.on('connect_error', (error) => {
+                        console.error('WebSocket 连接错误:', error);
+                        isWebSocketConnected = false;
+                        updateConnectionStatus('disconnected');
+                    });
+                } catch (error) {
+                    console.error('WebSocket 初始化失败:', error);
+                    startAPIFallback();
+                }
+            }
+
+            // 监控连接状态
+            function monitorConnection() {
+                setInterval(() => {
+                    if (!isWebSocketConnected && !apiInterval) {
+                        console.log('WebSocket 断开，切换到 API 轮询');
+                        startAPIFallback();
+                    }
+                }, 3000);
+            }
+
+            // 启动API备用模式
+            function startAPIFallback() {
+                if (apiInterval) return;
+
+                console.log('启动API轮询模式');
+                updateConnectionStatus('api');
+                apiInterval = setInterval(fetchDataFromAPI, 100);
+            }
+
+            // 停止API备用模式
+            function stopAPIFallback() {
+                if (apiInterval) {
+                    clearInterval(apiInterval);
+                    apiInterval = null;
+                    console.log('停止API轮询模式');
+                }
+            }
+
+            // 从API获取数据
+            async function fetchDataFromAPI() {
+                if (isPaused) return;
+
+                try {
+                    const response = await fetch('/api/data');
+                    const data = await response.json();
+                    if (data.code === 0 && data.user) {
+                        processData(data.user);
+                    }
+                } catch (error) {
+                    console.error('API请求失败:', error);
+                    updateConnectionStatus('disconnected');
+                }
+            }
+
+            // 更新连接状态显示
+            function updateConnectionStatus(status) {
+                const statusElement = document.getElementById('connectionStatus');
+                statusElement.className = `connection-status status-${status}`;
+
+                switch (status) {
+                    case 'connected':
+                        statusElement.textContent = translations.websocketConnected || '🟢 WebSocket';
+                        break;
+                    case 'api':
+                        statusElement.textContent = translations.pollingMode || '🟡 轮询模式';
+                        break;
+                    case 'disconnected':
+                        statusElement.textContent = translations.connectionLost || '🔴 连接断开';
+                        break;
+                    default:
+                        statusElement.textContent = translations.connecting || '🔄 连接中';
+                }
+            }
+
+            // 判断角色是否未参与战斗
+            function isUserInactive(user) {
+                // 检查总伤害、总DPS、总HPS是否都为0
+                const totalDamage = user.total_damage?.total || 0;
+                const totalDps = user.total_dps || 0;
+                const totalHps = user.total_hps || 0;
+
+                // 检查暴击率和幸运率是否为NaN
+                const critRate = user.total_count?.critical / user.total_count?.total;
+                const luckyRate = user.total_count?.lucky / user.total_count?.total;
+
+                return (totalDamage === 0 && totalDps === 0 && totalHps === 0) || (isNaN(critRate) && isNaN(luckyRate));
+            }
+
+            // 处理数据
+            function processData(users) {
+                users = Object.entries(users)
+                    .map(([id, user]) => ({ ...user, id }))
+                    .filter((user) => !isUserInactive(user));
+                if (!Array.isArray(users)) return;
+
+                // 过滤出有血量数据的用户，最多20个
+                let validUsers = users.filter((user) => user.hp !== undefined && user.max_hp !== undefined && user.max_hp > 0).slice(0, 20);
+
+                // 排序
+                validUsers = sortPlayers(validUsers);
+
+                currentPlayers = validUsers;
+                updateUI();
+            }
+
+            // 排序玩家
+            function sortPlayers(players) {
+                switch (currentSortMode) {
+                    case 'hp':
+                        return players.sort((a, b) => {
+                            const hpPercentA = (a.hp / a.max_hp) * 100;
+                            const hpPercentB = (b.hp / b.max_hp) * 100;
+                            return hpPercentA - hpPercentB; // 血量低的在前
+                        });
+                    case 'name':
+                        return players.sort((a, b) => {
+                            const nameA = (a.name || `UID:${a.id}`).toLowerCase();
+                            const nameB = (b.name || `UID:${b.id}`).toLowerCase();
+                            return nameA.localeCompare(nameB);
+                        });
+                    case 'dps':
+                        return players.sort((a, b) => (b.total_dps || 0) - (a.total_dps || 0));
+                    case 'hps':
+                        return players.sort((a, b) => (b.total_hps || 0) - (a.total_hps || 0));
+                    default:
+                        return players;
+                }
+            }
+
+            // 更新UI
+            function updateUI() {
+                updatePlayerCount();
+                renderPlayerCards();
+            }
+
+            // 更新玩家数量显示
+            function updatePlayerCount() {
+                const playerCountElement = document.getElementById('playerCount');
+                const count = currentPlayers.length;
+                const template = translations.monitoringPlayers || '监控中: {count}/20 名玩家';
+                playerCountElement.textContent = template.replace('{count}', count);
+            }
+
+            // 渲染玩家卡片
+            function renderPlayerCards() {
+                const grid = document.getElementById('playerGrid');
+                const noDataElement = grid.querySelector('.no-data');
+
+                if (currentPlayers.length === 0) {
+                    // 隐藏所有卡片
+                    playerCards.forEach((card, index) => {
+                        setTimeout(() => {
+                            card.style.display = 'none';
+                        }, index * 20);
+                    });
+
+                    // 显示无数据提示
+                    if (noDataElement) {
+                        setTimeout(
+                            () => {
+                                noDataElement.style.display = 'block';
+                            },
+                            playerCards.length * 20 + 100,
+                        );
+                    }
+                    return;
+                }
+
+                // 隐藏无数据提示
+                if (noDataElement) {
+                    noDataElement.style.display = 'none';
+                }
+
+                // 更新现有卡片内容并显示
+                currentPlayers.forEach((player, index) => {
+                    if (index < playerCards.length) {
+                        const card = playerCards[index];
+
+                        // 如果卡片当前隐藏，先显示再更新内容
+                        if (card.style.display === 'none') {
+                            card.style.display = 'flex';
+                            card.style.opacity = '0';
+                            card.style.transform = 'translateY(20px)';
+
+                            // 延迟显示动画
+                            setTimeout(() => {
+                                card.style.opacity = '1';
+                                card.style.transform = 'translateY(0)';
+                            }, index * 50);
+                        }
+
+                        updatePlayerCard(card, player, index);
+                    }
+                });
+
+                // 隐藏多余的卡片
+                for (let i = currentPlayers.length; i < playerCards.length; i++) {
+                    const card = playerCards[i];
+                    if (card.style.display !== 'none') {
+                        card.style.opacity = '0';
+                        card.style.transform = 'translateY(-10px)';
+
+                        setTimeout(() => {
+                            card.style.display = 'none';
+                        }, 200);
+                    }
+                }
+            }
+
+            // 预生成玩家卡片
+            function preGeneratePlayerCards() {
+                const grid = document.getElementById('playerGrid');
+
+                // 清空现有内容
+                grid.innerHTML = '';
+                playerCards = [];
+
+                // 创建最大数量的卡片
+                for (let i = 0; i < MAX_CARDS; i++) {
+                    const card = createEmptyPlayerCard(i);
+                    playerCards.push(card);
+                    grid.appendChild(card);
+                }
+
+                // 添加无数据提示元素
+                const noDataElement = document.createElement('div');
+                noDataElement.className = 'no-data';
+                noDataElement.innerHTML = `<div>📭 暂无参战玩家血条数据<br>🗺️ 切线或切图可重新获取血条数据</div>`;
+                noDataElement.style.display = 'block';
+                grid.appendChild(noDataElement);
+            }
+
+            // 创建空的玩家卡片
+            function createEmptyPlayerCard(index) {
+                const div = document.createElement('div');
+                div.className = 'player-card';
+                div.style.animationDelay = `${index * 0.05}s`;
+                div.style.display = 'none';
+                div.style.opacity = '0';
+                div.style.transform = 'translateY(20px)';
+
+                div.innerHTML = `
+                    <div class="player-info">
+                        <div class="player-basic">
+                            <div class="player-name" title="">等待数据...</div>
+                            <div class="player-profession">-</div>
+                        </div>
+                        <div class="player-stats">
+                            <div class="stat-item" title="总DPS">
+                                <span class="stat-icon">⚔️</span>
+                                <span class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item" title="总HPS">
+                                <span class="stat-icon">🩹</span>
+                                <span class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item" title="总伤害">
+                                <span class="stat-icon">💥</span>
+                                <span class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item" title="总治疗">
+                                <span class="stat-icon">❤️</span>
+                                <span class="stat-value">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hp-container">
+                        <div class="hp-bar">
+                            <div class="hp-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="hp-text">
+                            <span class="hp-current">0</span>
+                            <span class="hp-percentage">0%</span>
+                            <span class="hp-max">0</span>
+                        </div>
+                    </div>
+                `;
+
+                return div;
+            }
+
+            // 更新现有玩家卡片
+            function updatePlayerCard(cardElement, player, index) {
+                const hp = player.hp || 0;
+                const maxHp = player.max_hp || 1;
+                const hpPercent = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+                const name = player.name || `UID:${player.id}`;
+                const profession = player.profession || '未知';
+
+                // 获取职业信息
+                const professionParts = profession.split('-');
+                const mainProfession = professionParts[0];
+                const subProfession = professionParts[1] || '';
+                const professionInfo = professionMap[mainProfession] || { type: '未知', color: '#9E9E9E' };
+
+                // 确定血量状态
+                let hpClass = '';
+                if (hpPercent <= 25) hpClass = 'hp-critical';
+                else if (hpPercent <= 50) hpClass = 'hp-warning';
+                else if (hpPercent >= 99) hpClass = 'hp-full';
+                else hpClass = 'hp-healthy';
+
+                // 更新卡片类名和样式
+                cardElement.className = `player-card profession-${professionInfo.type} ${hpClass}`;
+                cardElement.style.setProperty('--profession-color', professionInfo.color);
+
+                // 更新卡片内容
+                const playerNameEl = cardElement.querySelector('.player-name');
+                const playerProfessionEl = cardElement.querySelector('.player-profession');
+                const hpCurrentEl = cardElement.querySelector('.hp-current');
+                const hpPercentageEl = cardElement.querySelector('.hp-percentage');
+                const hpMaxEl = cardElement.querySelector('.hp-max');
+                const hpFillEl = cardElement.querySelector('.hp-fill');
+                const statValues = cardElement.querySelectorAll('.stat-value');
+
+                playerNameEl.textContent = name;
+                playerNameEl.title = name;
+
+                playerProfessionEl.textContent = subProfession || professionInfo.short_name || '未知';
+                playerProfessionEl.style.backgroundColor = professionInfo.color;
+
+                hpCurrentEl.textContent = hp;
+                hpPercentageEl.textContent = `${hpPercent.toFixed(0)}%`;
+                hpMaxEl.textContent = maxHp;
+                hpFillEl.style.width = `${hpPercent}%`;
+
+                // 更新统计数据
+                if (statValues.length >= 3) {
+                    statValues[0].textContent = formatNumber(player.total_dps || 0, 1);
+                    statValues[1].textContent = formatNumber(player.total_hps || 0, 1);
+                    statValues[2].textContent = formatNumber(player.total_damage?.total || 0);
+                    statValues[3].textContent = formatNumber(player.total_healing?.total || 0);
+                }
+            }
+
+            // 格式化数字
+            function formatNumber(num, decimals = 0) {
+                if (num === undefined || num === null) return '0';
+
+                const number = parseFloat(num);
+                if (isNaN(number)) return '0';
+
+                if (number >= 1000000) {
+                    return (number / 1000000).toFixed(decimals) + 'M';
+                } else if (number >= 1000) {
+                    return (number / 1000).toFixed(decimals) + 'K';
+                } else {
+                    return number.toFixed(decimals);
+                }
+            }
+
+            // 设置排序模式
+            function setSortMode(mode) {
+                currentSortMode = mode;
+
+                // 更新按钮状态
+                document.querySelectorAll('.controls .btn').forEach((btn) => {
+                    btn.classList.remove('active');
+                });
+                const targetBtn = document.getElementById(`sort${mode.charAt(0).toUpperCase() + mode.slice(1)}Btn`);
+                if (targetBtn) {
+                    targetBtn.classList.add('active');
+                }
+
+                // 重新排序和渲染
+                if (currentPlayers.length > 0) {
+                    currentPlayers = sortPlayers(currentPlayers);
+                    renderPlayerCards();
+                }
+            }
+
+            // 页面初始化
+            document.addEventListener('DOMContentLoaded', () => {
+                // 预生成玩家卡片
+                preGeneratePlayerCards();
+
+                // 初始化连接
+                initConnection();
+
+                // 键盘快捷键
+                document.addEventListener('keydown', (e) => {
+                    switch (e.key.toLowerCase()) {
+                        case '1':
+                            setSortMode('hp');
+                            break;
+                        case '2':
+                            setSortMode('name');
+                            break;
+                        case '3':
+                            setSortMode('dps');
+                            break;
+                        case '4':
+                            setSortMode('hps');
+                            break;
+                    }
+                });
+            });
+        </script>
+    </body>
+</html>

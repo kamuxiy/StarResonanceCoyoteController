@@ -1,0 +1,106 @@
+name: Build Windows Executable with pnpm
+
+on:
+  - push
+  - workflow_dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # 安装 Node.js
+    - name: Setup Node.js 22
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.x
+
+    # 安装 pnpm
+    - name: Install pnpm
+      run: corepack enable
+
+    # 缓存 pnpm store
+    - name: Cache pnpm store
+      uses: actions/cache@v4
+      with:
+        path: D:\.pnpm-store\v10
+        key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-
+
+    # 显示 pnpm store 路径
+    - name: Show pnpm store path
+      run: pnpm store path
+
+    # 安装依赖
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    # 生成 dist 目录
+    - name: Prepare dist directory
+      run: mkdir dist
+
+    # 获取完整 commit SHA 并写入 dist/commit.txt
+    - name: Generate commit.txt
+      run: echo ${{ github.sha }} > dist/commit.txt
+
+    # 构建 Windows EXE
+    - name: Build Windows executable
+      run: |
+        $outputName = "dist/star-resonance-damage-counter.exe"
+        pnpm build `
+          --output $outputName `
+          --options max_old_space_size=4096
+        if (Test-Path $outputName) {
+          Write-Host "EXE generated successfully at $outputName"
+        } else {
+          Write-Error "EXE file not found!"
+          exit 1
+        }
+
+    # 复制 LICENSE 和 README.md
+    - name: Copy LICENSE and README.md
+      run: |
+        xcopy LICENSE dist\
+        xcopy README.md dist\
+
+    # 创建 ZIP 包
+    - name: Create ZIP package
+      run: |
+        $zipName = "dist/StarResonanceDamageCounter.zip"
+        if (Test-Path $zipName) {
+          Remove-Item $zipName
+        }
+        Compress-Archive -Path dist\* -DestinationPath $zipName
+        if (Test-Path $zipName) {
+          Write-Host "ZIP package created successfully at $zipName"
+        } else {
+          Write-Error "ZIP file not found!"
+          exit 1
+        }
+
+    # 上传构建产物
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: StarResonanceDamageCounter
+        path: dist/StarResonanceDamageCounter.zip
+
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      if: github.ref_type == 'tag'
+      with:
+        files: |
+          dist/StarResonanceDamageCounter.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
